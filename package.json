@@ -1,0 +1,44 @@
+{
+  "name": "kkinggitaja",
+  "version": "0.1.1",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "test": "npx tsx --test src/lib/*.test.ts",
+    "react:doctor": "react-doctor",
+    "load:local": "node scripts/load-test.mjs",
+    "test:mock": "npx tsx scripts/simulate.ts add",
+    "test:clear": "npx tsx scripts/simulate.ts clear"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.9.0",
+    "@supabase/supabase-js": "^2.99.3",
+    "next": "^16.3.4",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "uuid": "^14.0.2",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "^16.3.4",
+    "react-doctor": "^0.9.13",
+    "react-grab": "^0.2.0",
+    "react-scan": "^0.5.7",
+    "typescript": "^5"
+  },
+  "description": "부산대역의 정해진 승차 지점에서 관리형 하차 지점까지 가는 익명 택시 동승 서비스입니다. 사용자는 하차 지점, 일행 인원, 출발 우선순위를 고르고 대기·제안·집합·출발·정산까지 한 흐름으로 진행합니다. 운영자는 하차 지점과 요금표, 대기열, 매칭 현황과 지표를 관리합니다.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

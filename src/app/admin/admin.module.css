@@ -1,0 +1,341 @@
+.loginShell {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: var(--space-6);
+}
+
+.loginCard {
+  display: flex;
+  width: min(100%, 28rem);
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: clamp(1.5rem, 5vw, 2.5rem);
+  background: var(--surface-base);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-floating);
+}
+
+.loginCard h1 {
+  font-size: var(--text-2xl);
+  line-height: 1.1;
+  letter-spacing: -0.045em;
+}
+
+.eyebrow {
+  color: var(--action-primary);
+  font-size: var(--text-xs);
+  font-weight: 850;
+  letter-spacing: 0.12em;
+}
+
+.lead,
+.sectionHeading p,
+.destinationMeta p {
+  color: var(--content-secondary);
+}
+
+.formStack,
+.fieldGroup,
+.destinationManager,
+.destinationList,
+.destinationForm,
+.fareFieldset {
+  display: flex;
+  flex-direction: column;
+}
+
+.formStack,
+.destinationManager,
+.destinationForm,
+.fareFieldset {
+  gap: var(--space-4);
+}
+
+.fieldGroup {
+  gap: var(--space-1);
+}
+
+.fieldGroup label,
+.fareRow label {
+  font-size: var(--text-sm);
+  font-weight: 720;
+}
+
+.dashboard {
+  min-height: 100vh;
+  padding: var(--space-5) max(var(--space-5), env(safe-area-inset-right)) calc(var(--space-10) + env(safe-area-inset-bottom)) max(var(--space-5), env(safe-area-inset-left));
+}
+
+.adminHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-bottom: var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.adminBrand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.adminBrandMark {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  place-items: center;
+  color: var(--content-on-action);
+  font-weight: 900;
+  background: var(--surface-inverse);
+  border-radius: var(--radius-sm);
+}
+
+.headerActions,
+.rowActions,
+.tabs,
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.tabs {
+  margin-block: var(--space-5);
+  padding: var(--space-1);
+  background: var(--surface-subtle);
+  border-radius: var(--radius-md);
+}
+
+.tab {
+  min-height: var(--touch-target);
+  padding: var(--space-2) var(--space-4);
+  color: var(--content-secondary);
+  font-weight: 720;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+}
+
+.tab[aria-pressed="true"] {
+  color: var(--content-primary);
+  background: var(--surface-base);
+  box-shadow: var(--shadow-control);
+}
+
+.dashboardMain,
+.panel,
+.overview,
+.tableStack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.panel,
+.destinationManager {
+  padding: clamp(1rem, 3vw, 1.75rem);
+  background: var(--surface-base);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+}
+
+.sectionHeading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.sectionHeading h1,
+.sectionHeading h2 {
+  margin-top: var(--space-1);
+  letter-spacing: -0.03em;
+}
+
+.metricGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.metricCard {
+  min-width: 0;
+  padding: var(--space-4);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.metricCard span {
+  display: block;
+  color: var(--content-secondary);
+  font-size: var(--text-xs);
+  font-weight: 700;
+}
+
+.metricCard strong {
+  display: block;
+  margin-top: var(--space-1);
+  overflow: hidden;
+  font-size: clamp(1.5rem, 4vw, 2.25rem);
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+}
+
+.metricCard small {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--content-muted);
+}
+
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.table {
+  width: 100%;
+  min-width: 46rem;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.table th {
+  color: var(--content-secondary);
+  font-size: var(--text-xs);
+  font-weight: 800;
+  background: var(--surface-raised);
+}
+
+.table td {
+  font-size: var(--text-sm);
+}
+
+.table tr:last-child td {
+  border-bottom: 0;
+}
+
+.badge,
+.activeBadge,
+.inactiveBadge,
+.draftBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.75rem;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: 800;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+}
+
+.activeBadge { color: var(--status-success); background: var(--status-success-soft); border-color: var(--status-success); }
+.inactiveBadge { color: var(--content-secondary); background: var(--surface-subtle); }
+.draftBadge { color: var(--status-warning); background: var(--status-warning-soft); border-color: var(--status-warning); }
+
+.destinationGrid {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.destinationList {
+  gap: var(--space-3);
+}
+
+.destinationItem {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.destinationMeta {
+  display: flex;
+  min-width: min(100%, 18rem);
+  flex: 1;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.destinationMeta p {
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
+}
+
+.destinationForm {
+  padding: var(--space-5);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+}
+
+.formGrid {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.fareFieldset {
+  min-width: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.fareFieldset legend {
+  padding-inline: var(--space-2);
+  font-weight: 800;
+}
+
+.fareRow {
+  display: grid;
+  gap: var(--space-3);
+  padding-block: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.fareRow:last-child { border-bottom: 0; }
+.fareRow p { display: flex; flex-direction: column; }
+.fareRow p span { color: var(--content-muted); font-size: var(--text-xs); }
+.fareRow label { display: flex; flex-direction: column; gap: var(--space-1); }
+
+.empty {
+  padding: var(--space-6);
+  color: var(--content-secondary);
+  text-align: center;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--text-xs);
+}
+
+@media (min-width: 48rem) {
+  .dashboard { padding: var(--space-8); }
+  .metricGrid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .formGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fareRow { grid-template-columns: minmax(10rem, 1.5fr) repeat(3, minmax(8rem, 1fr)); align-items: end; }
+}
+
+@media (min-width: 64rem) {
+  .destinationGrid { grid-template-columns: minmax(0, 1fr) minmax(25rem, 0.8fr); align-items: start; }
+}
