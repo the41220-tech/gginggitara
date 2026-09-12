@@ -108,6 +108,7 @@
 .joinGrid {
   display: grid;
   gap: var(--space-6);
+  padding-bottom: 5rem;
 }
 
 .formColumn,
@@ -329,6 +330,36 @@
 .primaryWide { width: 100%; }
 .summaryCard .primaryWide { color: var(--surface-inverse); background: var(--content-on-action); }
 
+.mobileJoinAction {
+  position: fixed;
+  z-index: 20;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) max(var(--space-5), env(safe-area-inset-right)) calc(var(--space-3) + env(safe-area-inset-bottom)) max(var(--space-5), env(safe-area-inset-left));
+  background: color-mix(in srgb, var(--surface-base) 94%, transparent);
+  border-top: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-floating);
+  backdrop-filter: blur(12px);
+}
+
+.mobileJoinAction span {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--text-sm);
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobileJoinAction :global(.button) { flex: 0 0 auto; }
+.desktopJoinAction { display: none; }
+.declineWarning { margin-top: var(--space-3); color: var(--status-danger); font-size: var(--text-sm); font-weight: 700; }
+
 .inlineStatus {
   display: flex;
   align-items: flex-start;
@@ -537,9 +568,11 @@
 
 @media (min-width: 56rem) {
   .main { padding-top: var(--space-12); }
-  .joinGrid { grid-template-columns: minmax(0, 1.45fr) minmax(19rem, 0.75fr); align-items: start; }
+  .joinGrid { grid-template-columns: minmax(0, 1.45fr) minmax(19rem, 0.75fr); align-items: start; padding-bottom: 0; }
   .summaryColumn { position: sticky; top: var(--space-6); }
   .routeList { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mobileJoinAction { display: none; }
+  .desktopJoinAction { display: inline-flex; }
 }
 
 @media (prefers-reduced-motion: reduce) {

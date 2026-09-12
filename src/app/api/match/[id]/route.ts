@@ -1,6 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/server";
 import { isValidUUID, sanitizeErrorMessage } from "@/lib/validation";
-import { triggerAllMatches } from "@/lib/matching";
 import { jsonNoStore } from "@/lib/http";
 import { requireParticipantSession } from "@/lib/participant-session";
 import { z } from "zod";
@@ -43,35 +42,13 @@ export async function GET(_request: Request, context: { readonly params: Promise
         .eq("session_id", sessionId)
         .maybeSingle(),
     ]);
-    let { data: match, error: matchError } = matchResult;
+    const { data: match, error: matchError } = matchResult;
     const { data: membership, error: membershipError } = membershipResult;
     if (matchError || membershipError) {
       return jsonNoStore({ error: sanitizeErrorMessage(matchError ?? membershipError) }, 500);
     }
     if (!match) return jsonNoStore({ error: "Match not found." }, 404);
     if (!membership) return jsonNoStore({ error: "Not a member of this match." }, 403);
-
-    const deadline = match.status === "offered" ? match.offer_expires_at : match.assembly_deadline;
-    if ((match.status === "offered" || match.status === "assembling") && deadline && Date.parse(deadline) <= Date.now()) {
-      await triggerAllMatches();
-      const refreshed = await supabase
-        .from("matches")
-        .select(`
-          id, team_number, service_date, pickup_spot_id, drop_zone_id,
-          total_party_size, eta_minutes, est_fare_min, est_fare_max,
-          assembly_deadline, offer_expires_at, offer_version, route_snapshot,
-          policy_version, status, created_at,
-          pickup:pickup_spots(name, location_desc),
-          drop_zone:drop_zones(name, description, walk_minutes),
-          members:queue_entries(id, nickname, party_size, status, departure_mode)
-        `)
-        .eq("id", id)
-        .maybeSingle();
-      match = refreshed.data;
-      matchError = refreshed.error;
-      if (matchError) return jsonNoStore({ error: sanitizeErrorMessage(matchError) }, 500);
-      if (!match) return jsonNoStore({ error: "Match not found." }, 404);
-    }
 
     return jsonNoStore({ ...match, viewer_entry_id: membership.id, server_now: new Date().toISOString() });
   } catch (error) {

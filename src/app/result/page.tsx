@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import SettlementSection from "@/components/SettlementSection";
 import { StatusMessage } from "@/components/ui/StatusMessage";
+import { apiMessage, isRecord, relation } from "@/lib/api-response";
 import { trackProductEvent } from "@/lib/analytics";
 import { participantFetch } from "@/lib/client-session";
 import styles from "@/app/public-flow.module.css";
@@ -22,21 +23,6 @@ type ResultEntry = {
   readonly pickupName: string;
   readonly dropZoneName: string;
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function relation(value: unknown): Record<string, unknown> | null {
-  if (isRecord(value)) return value;
-  return Array.isArray(value) && isRecord(value[0]) ? value[0] : null;
-}
-
-function apiMessage(value: unknown, fallback: string): string {
-  if (!isRecord(value)) return fallback;
-  if (typeof value.error === "string") return value.error;
-  return isRecord(value.error) && typeof value.error.message === "string" ? value.error.message : fallback;
-}
 
 function parseEntry(value: unknown): ResultEntry | null {
   if (!isRecord(value)) return null;
@@ -119,7 +105,7 @@ export default function ResultPage() {
             <button className="button button--secondary" type="button" onClick={retryWithSelections}>새 매칭 시작</button>
           </>
         ) : entry?.status === "expired" ? (
-          <section className={`surface-card ${styles.emptyState}`}><span className={styles.eyebrow}>대기 종료</span><h1>이번에는 팀을 찾지 못했어요.</h1><p className={styles.lead}>{entry.dropZoneName} 방향 대기가 3분 동안 성사되지 않았습니다. 같은 조건으로 바로 다시 시도하거나 하차 지점을 바꿀 수 있어요.</p><div className={styles.actions}><button className="button button--primary" type="button" onClick={retryWithSelections}>같은 조건으로 다시 시도</button><Link className="button button--secondary" href="/join">하차 지점 변경</Link></div></section>
+          <section className={`surface-card ${styles.emptyState}`}><span className={styles.eyebrow}>대기 종료</span><h1>이번에는 팀을 찾지 못했어요.</h1><p className={styles.lead}>{entry.dropZoneName} 방향 대기가 3분 동안 성사되지 않았습니다. 같은 조건을 확인해 다시 시작하거나 하차 지점을 바꿀 수 있어요.</p><div className={styles.actions}><button className="button button--primary" type="button" onClick={retryWithSelections}>같은 조건 확인하고 다시 시작</button><Link className="button button--secondary" href="/join">하차 지점 변경</Link></div></section>
         ) : entry?.status === "cancelled" ? (
           <section className={`surface-card ${styles.emptyState}`}><span className={styles.eyebrow}>대기 취소</span><h1>대기를 종료했어요.</h1><p className={styles.lead}>자동으로 다시 매칭되지 않습니다. 필요할 때 새 대기를 시작해주세요.</p><button className="button button--primary" type="button" onClick={retryWithSelections}>새 매칭 시작</button></section>
         ) : entry?.status === "noshow" ? (

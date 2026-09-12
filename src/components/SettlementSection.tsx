@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { useToast } from "@/components/Toast";
 import { StatusMessage } from "@/components/ui/StatusMessage";
+import { apiMessage, isRecord } from "@/lib/api-response";
 import { participantFetch } from "@/lib/client-session";
 import { trackProductEvent } from "@/lib/analytics";
 import { useVisiblePolling } from "@/hooks/useVisiblePolling";
@@ -31,16 +32,6 @@ type SettlementData = {
 };
 
 const BANKS = ["카카오뱅크", "토스뱅크", "국민은행", "신한은행", "하나은행", "우리은행", "농협은행", "기업은행", "SC제일은행", "부산은행", "대구은행", "경남은행", "광주은행", "전북은행", "제주은행", "새마을금고", "신협", "우체국", "수협", "케이뱅크"] as const;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function apiMessage(value: unknown, fallback: string): string {
-  if (!isRecord(value)) return fallback;
-  if (typeof value.error === "string") return value.error;
-  return isRecord(value.error) && typeof value.error.message === "string" ? value.error.message : fallback;
-}
 
 function parseFare(value: unknown): FareSummary | null {
   if (!isRecord(value) || typeof value.totalMin !== "number" || typeof value.totalMax !== "number" || typeof value.totalPeople !== "number" || typeof value.perPersonMin !== "number" || typeof value.perPersonMax !== "number" || typeof value.viewerPartySize !== "number") return null;

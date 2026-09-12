@@ -1,4 +1,5 @@
-import { triggerAllMatches } from "@/lib/matching";
+import { MatchingEngineError, triggerAllMatches } from "@/lib/matching";
+import { shouldTriggerMatchesAfterTransition, triggerMatchesBestEffort } from "@/lib/matching-trigger-policy";
 import { createAdminClient } from "@/lib/supabase/server";
 import { isValidUUID, sanitizeErrorMessage } from "@/lib/validation";
 import { jsonNoStore } from "@/lib/http";
@@ -60,10 +61,13 @@ export async function PATCH(request: Request, context: RouteContext<"/api/queue/
       return jsonNoStore({ error: "The queue state changed. Refresh and try again." }, status);
     }
 
-    if (transition.action === "decline" || transition.action === "resume") {
-      await triggerAllMatches();
-    }
-    return jsonNoStore(data);
+    const matchingPending = shouldTriggerMatchesAfterTransition(transition.action)
+      ? await triggerMatchesBestEffort(
+          () => triggerAllMatches(),
+          (matchingError) => matchingError instanceof MatchingEngineError,
+        )
+      : false;
+    return jsonNoStore({ ...data, matching_pending: matchingPending });
   } catch (error) {
     if (error instanceof SyntaxError) {
       return jsonNoStore({ error: "Invalid JSON body." }, 400);

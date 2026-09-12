@@ -8,8 +8,11 @@ import LoadingSpinner from "@/components/LoadingSpinner";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { StatusMessage } from "@/components/ui/StatusMessage";
+import { apiMessage, isRecord, relation } from "@/lib/api-response";
 import { trackProductEvent } from "@/lib/analytics";
+import { advanceParticipantMatching } from "@/lib/client-matching";
 import { participantFetch } from "@/lib/client-session";
+import { needsTeamRecovery, recoverTeamRoute } from "@/lib/team-recovery";
 import { useVisiblePolling } from "@/hooks/useVisiblePolling";
 import styles from "@/app/public-flow.module.css";
 
@@ -31,21 +34,6 @@ type MatchView = {
   readonly members: readonly TeamMember[];
 };
 type ReportType = "noshow" | "wrong_count" | "bad_behavior" | "other";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function relation(value: unknown): Record<string, unknown> | null {
-  if (isRecord(value)) return value;
-  return Array.isArray(value) && isRecord(value[0]) ? value[0] : null;
-}
-
-function apiMessage(value: unknown, fallback: string): string {
-  if (!isRecord(value)) return fallback;
-  if (typeof value.error === "string") return value.error;
-  return isRecord(value.error) && typeof value.error.message === "string" ? value.error.message : fallback;
-}
 
 function routeLabel(value: unknown): RouteLabel | null {
   const item = relation(value);
@@ -97,6 +85,15 @@ export default function TeamPage({ params }: { readonly params: Promise<{ readon
       const response = await participantFetch(`/api/match/${encodeURIComponent(matchId)}`, { cache: "no-store" });
       const payload: unknown = await response.json();
       if (sequence !== refreshSequenceRef.current) return;
+      if (needsTeamRecovery(response, payload)) {
+        setMatch(null);
+        setLoading(true);
+        const nextRoute = await recoverTeamRoute(matchId);
+        if (sequence !== refreshSequenceRef.current) return;
+        setError(null);
+        router.replace(nextRoute);
+        return;
+      }
       if (!response.ok) throw new Error(apiMessage(payload, response.status === 404 ? "팀을 찾을 수 없어요." : response.status === 403 ? "이 팀에 참여한 세션이 아니에요." : "팀 상태를 불러오지 못했어요."));
       const nextMatch = matchView(payload);
       if (!nextMatch) throw new Error("팀 상태 응답 형식을 확인하지 못했어요.");
@@ -108,7 +105,7 @@ export default function TeamPage({ params }: { readonly params: Promise<{ readon
         trackProductEvent({ eventName: "team_assembled", properties: { drop_zone_id: nextMatch.drop_zone_id } });
       }
       const viewer = nextMatch.members.find((member) => member.id === nextMatch.viewer_entry_id);
-      if (nextMatch.status === "departed" || nextMatch.status === "cancelled" || viewer?.status === "noshow") router.replace("/result");
+      if (nextMatch.status === "departed" || viewer?.status === "noshow") router.replace("/result");
     } catch (caught) {
       if (sequence !== refreshSequenceRef.current) return;
       const message = caught instanceof Error ? caught.message : "네트워크 연결을 확인해주세요.";
@@ -124,6 +121,20 @@ export default function TeamPage({ params }: { readonly params: Promise<{ readon
   useEffect(() => () => {
     refreshSequenceRef.current += 1;
   }, []);
+
+  const advanceAndRefresh = useCallback(async (): Promise<void> => {
+    try {
+      const nextRoute = await advanceParticipantMatching();
+      if (nextRoute && nextRoute !== `/team/${matchId}`) {
+        router.replace(nextRoute);
+        return;
+      }
+      await refresh(false);
+    } catch (caught) {
+      showToast(caught instanceof Error ? caught.message : "팀 상태를 갱신하지 못했어요.", "error");
+      await refresh(false);
+    }
+  }, [matchId, refresh, router, showToast]);
 
   async function transition(action: "arrive" | "depart"): Promise<void> {
     setBusy(action);
@@ -181,7 +192,7 @@ export default function TeamPage({ params }: { readonly params: Promise<{ readon
         <div className={styles.timeline} aria-label="진행 단계"><span className={styles.timelineStep} data-active="true">1. 매칭 완료</span><span className={styles.timelineStep} data-active="true">2. 승차 집합</span><span className={styles.timelineStep}>3. 출발</span></div>
         <header className={styles.hero}><span className={styles.eyebrow}>{dropZoneName} 방향 · 총 {match.total_party_size}명</span><div className={styles.teamNumber}><span>팀</span><strong>{match.team_number}</strong></div><h1 className={styles.routeTitle}>{pickupName}에서 팀 번호를 확인하세요.</h1><p>{match.pickup?.location_desc ?? "선택한 승차 지점에서 같은 팀 번호를 찾아주세요."}</p></header>
 
-        <section className={styles.section} aria-labelledby="assembly-time"><div className={styles.sectionHeader}><div><h2 id="assembly-time">집합 마감</h2><p>마감 뒤에는 도착한 서로 다른 일행이 2팀 이상일 때만 출발할 수 있어요.</p></div></div><CountdownTimer deadline={match.assembly_deadline} serverNow={match.server_now} label="집합 마감까지" onTimeout={() => void refresh(false)} /></section>
+        <section className={styles.section} aria-labelledby="assembly-time"><div className={styles.sectionHeader}><div><h2 id="assembly-time">집합 마감</h2><p>마감 뒤에는 도착한 서로 다른 일행이 2팀 이상일 때만 출발할 수 있어요.</p></div></div><CountdownTimer deadline={match.assembly_deadline} serverNow={match.server_now} label="집합 마감까지" onTimeout={() => void advanceAndRefresh()} /></section>
 
         <section className={styles.section} aria-labelledby="members-title">
           <div className={styles.sectionHeader}><div><h2 id="members-title">팀원 도착 현황</h2><p>실명 대신 이번 매칭에서만 쓰는 임시 이름입니다.</p></div><strong>{arrivedPeople}/{match.total_party_size}명</strong></div>

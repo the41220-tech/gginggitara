@@ -226,6 +226,8 @@ async function run() {
     assert(carol.status === "offered" && carol.match_id !== null, "Timeout fixture must be offered.");
     const { error } = await supabase.from("matches").update({ offer_expires_at: new Date(0).toISOString() }).eq("id", carol.match_id);
     if (error) throw new HarnessError(`Clock manipulation failed: ${error.message}`);
+    const advanced = await request("carol", "POST", "/api/match/countdown");
+    assert(advanced.ok, `Explicit timeout advance failed: HTTP ${advanced.status}`);
     carol = await queueFor("carol");
     assert(carol.status === "paused", "Expired non-response must pause the queue entry.");
     await transitionQueue("carol", carol.id, "resume");

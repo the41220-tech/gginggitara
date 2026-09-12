@@ -9,8 +9,11 @@ import MatchAcceptOverlay from "@/components/MatchAcceptOverlay";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { StatusMessage } from "@/components/ui/StatusMessage";
+import { apiMessage, isRecord, relation } from "@/lib/api-response";
 import { trackProductEvent } from "@/lib/analytics";
+import { advanceParticipantMatching } from "@/lib/client-matching";
 import { participantFetch } from "@/lib/client-session";
+import { useMatchAlert } from "@/hooks/useMatchAlert";
 import { useVisiblePolling } from "@/hooks/useVisiblePolling";
 import styles from "@/app/public-flow.module.css";
 
@@ -41,21 +44,6 @@ type QueueView = {
   readonly dropZone: RouteLabel | null;
   readonly match: OfferMatch | null;
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function relation(value: unknown): Record<string, unknown> | null {
-  if (isRecord(value)) return value;
-  return Array.isArray(value) && isRecord(value[0]) ? value[0] : null;
-}
-
-function apiMessage(value: unknown, fallback: string): string {
-  if (!isRecord(value)) return fallback;
-  if (typeof value.error === "string") return value.error;
-  return isRecord(value.error) && typeof value.error.message === "string" ? value.error.message : fallback;
-}
 
 function routeLabel(value: unknown): RouteLabel | null {
   const item = relation(value);
@@ -101,6 +89,7 @@ export default function WaitingPage({ params }: { readonly params: Promise<{ rea
   const { entryId } = use(params);
   const router = useRouter();
   const { showToast } = useToast();
+  const { playAlert } = useMatchAlert();
   const [entry, setEntry] = useState<QueueView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -140,6 +129,7 @@ export default function WaitingPage({ params }: { readonly params: Promise<{ rea
         if (presentedOfferRef.current !== offerKey) {
           presentedOfferRef.current = offerKey;
           trackProductEvent({ eventName: "offer_presented", properties: { drop_zone_id: nextEntry.drop_zone_id, party_size: Math.min(3, Math.max(1, nextEntry.party_size)) as 1 | 2 | 3, preference: nextEntry.departure_mode } });
+          playAlert();
         }
       }
 
@@ -152,7 +142,7 @@ export default function WaitingPage({ params }: { readonly params: Promise<{ rea
       setLoading(false);
       if (announceError) showToast(message, "error");
     }
-  }, [entryId, router, showToast]);
+  }, [entryId, playAlert, router, showToast]);
 
   const refreshCount = useCallback(async (current: QueueView): Promise<void> => {
     const sequence = ++countSequenceRef.current;
@@ -187,6 +177,20 @@ export default function WaitingPage({ params }: { readonly params: Promise<{ rea
     if (entry?.status === "waiting") void refreshCount(entry);
   }, [entry, refreshCount]);
   useVisiblePolling(pollCount, 7_500);
+
+  const advanceAndRefresh = useCallback(async (): Promise<void> => {
+    try {
+      const nextRoute = await advanceParticipantMatching();
+      if (nextRoute && nextRoute !== `/waiting/${entryId}`) {
+        router.replace(nextRoute);
+        return;
+      }
+      await refresh(false);
+    } catch (caught) {
+      showToast(caught instanceof Error ? caught.message : "매칭 상태를 갱신하지 못했어요.", "error");
+      await refresh(false);
+    }
+  }, [entryId, refresh, router, showToast]);
 
   async function transition(action: "accept" | "decline" | "cancel" | "resume"): Promise<void> {
     if (!entry) return;
@@ -238,13 +242,13 @@ export default function WaitingPage({ params }: { readonly params: Promise<{ rea
       <div className={styles.topbar}><Link className={styles.brand} href="/join" aria-label="낑기타자 처음으로"><span className={styles.brandMark} aria-hidden="true" /><span>낑기타자</span></Link><span className={styles.serviceChip}>매칭 대기</span></div>
       <div className={`${styles.main} ${styles.narrow}`}>
         <div className={styles.timeline} aria-label="진행 단계"><span className={styles.timelineStep} data-active="true">1. 매칭 대기</span><span className={styles.timelineStep}>2. 제안 확인</span><span className={styles.timelineStep}>3. 승차 집합</span></div>
-        <header className={styles.hero}><span className={styles.eyebrow}>{pickupName} 출발</span><h1 className={styles.routeTitle}>{dropZoneName} 방향 팀을 <span className={styles.noWrap}>찾고 있어요.</span></h1><p>화면을 닫거나 다른 앱을 보고 와도 서버의 대기 기한까지 상태가 유지됩니다.</p></header>
+        <header className={styles.hero}><span className={styles.eyebrow}>{pickupName} 출발</span><h1 className={styles.routeTitle}>{dropZoneName} 방향 팀을 <span className={styles.noWrap}>찾고 있어요.</span></h1><p>대기는 서버에서 최대 3분간 유지됩니다. 20초 제안을 놓치지 않으려면 이 화면을 열어두세요.</p></header>
 
         {entry.status === "paused" ? (
           <section className={styles.section}><StatusMessage tone="warning" title="매칭 제안 응답을 놓쳤어요.">자동으로 다른 팀에 들어가지 않도록 대기를 잠시 멈췄습니다.</StatusMessage><button className="button button--primary" type="button" disabled={busyAction !== null} onClick={() => void transition("resume")}>{busyAction === "resume" ? "다시 시작 중…" : "같은 조건으로 대기 재개"}</button></section>
         ) : (
           <>
-            <section className={styles.section} aria-labelledby="wait-time-title"><div className={styles.sectionHeader}><div><h2 id="wait-time-title">남은 대기 시간</h2><p>기한이 되면 서버가 현재 인원으로 가능한 팀을 확인합니다.</p></div></div><CountdownTimer deadline={entry.queue_deadline_at} serverNow={entry.server_now} label="대기 종료까지" onTimeout={() => void refresh(false)} /></section>
+            <section className={styles.section} aria-labelledby="wait-time-title"><div className={styles.sectionHeader}><div><h2 id="wait-time-title">남은 대기 시간</h2><p>기한이 되면 서버가 현재 인원으로 가능한 팀을 확인합니다.</p></div></div><CountdownTimer deadline={entry.queue_deadline_at} serverNow={entry.server_now} label="대기 종료까지" onTimeout={() => void advanceAndRefresh()} /></section>
             <section className={styles.section} aria-labelledby="seat-title">
               <div className={styles.sectionHeader}><div><h2 id="seat-title">현재 좌석</h2><p>내 일행은 초록색, 함께 기다리는 좌석은 파란색으로 표시합니다.</p></div><strong>{visiblePeople}/4명</strong></div>
               <div className={styles.seatMeter} aria-label={`최대 4석 중 ${visiblePeople}석 예상`}>
@@ -252,7 +256,7 @@ export default function WaitingPage({ params }: { readonly params: Promise<{ rea
               </div>
               <div className={styles.metricRow}><span className={styles.meta}>내 일행 {entry.party_size}명</span><strong>{otherPeople === null ? "다른 대기자 확인 중" : otherPeople > 0 ? `같은 경로 ${otherPeople}명 대기` : "아직 같은 경로 대기자 없음"}</strong></div>
             </section>
-            <section className={styles.section}><div className={styles.sectionHeader}><div><h2>{entry.departure_mode === "fast" ? "빠른 출발 우선" : "요금 절약 우선"}</h2><p>{entry.departure_mode === "fast" ? "서로 다른 일행이 합쳐 2~3명이 되면 바로 매칭을 제안합니다." : "4명을 우선 기다리고, 3분 뒤 2~3명으로 가능한 팀을 제안합니다."}</p></div></div></section>
+            <section className={styles.section}><div className={styles.sectionHeader}><div><h2>{entry.departure_mode === "fast" ? "빠른 출발 우선" : "요금 절약 우선"}</h2><p>{entry.departure_mode === "fast" ? "서로 다른 2팀 이상이고 모든 일행이 빠른 출발을 선택한 2~3명 팀이면 바로 제안합니다." : "4명을 우선 기다리고, 3분 뒤 2~3명으로 가능한 팀을 제안합니다."}</p></div></div></section>
           </>
         )}
 
@@ -260,7 +264,7 @@ export default function WaitingPage({ params }: { readonly params: Promise<{ rea
         {!hasActiveOffer ? <button className="button button--quiet-danger" type="button" disabled={busyAction !== null} onClick={() => setCancelOpen(true)}>대기 취소</button> : null}
       </div>
 
-      {entry.status === "offered" && entry.match ? <MatchAcceptOverlay teamNumber={entry.match.team_number} totalPartySize={entry.match.total_party_size} pickupName={pickupName} dropZoneName={dropZoneName} offerExpiresAt={entry.match.offer_expires_at} serverNow={entry.server_now} accepted={entry.offer_accepted_at !== null} busy={busyAction !== null} onAccept={() => void transition("accept")} onDecline={() => void transition("decline")} onExpire={() => void refresh(false)} /> : null}
+      {entry.status === "offered" && entry.match ? <MatchAcceptOverlay key={`${entry.match.id}:${entry.offer_version}`} teamNumber={entry.match.team_number} totalPartySize={entry.match.total_party_size} pickupName={pickupName} dropZoneName={dropZoneName} offerExpiresAt={entry.match.offer_expires_at} serverNow={entry.server_now} accepted={entry.offer_accepted_at !== null} busy={busyAction !== null} onAccept={() => void transition("accept")} onDecline={() => void transition("decline")} onExpire={() => void advanceAndRefresh()} /> : null}
       <ConfirmDialog open={cancelOpen} title="대기를 취소할까요?" description="현재 순서가 사라지고, 다시 참여하면 새 대기열로 등록됩니다." confirmLabel="대기 취소" tone="danger" busy={busyAction === "cancel"} onConfirm={() => void transition("cancel")} onClose={() => setCancelOpen(false)} />
     </main>
   );

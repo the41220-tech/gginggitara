@@ -8,7 +8,9 @@ import RoomCard, { type JoinRouteCard } from "@/components/RoomCard";
 import StepSelector from "@/components/StepSelector";
 import { useToast } from "@/components/Toast";
 import { StatusMessage } from "@/components/ui/StatusMessage";
+import { apiMessage, isRecord } from "@/lib/api-response";
 import { participantFetch } from "@/lib/client-session";
+import { participantRoute } from "@/lib/participant-route";
 import { trackProductEvent } from "@/lib/analytics";
 import styles from "@/app/public-flow.module.css";
 
@@ -26,16 +28,6 @@ type Room = {
 };
 type SavedSelections = { readonly partySize?: number; readonly pickupSpot?: string; readonly dropZone?: string; readonly departureMode?: "fast" | "cheap" };
 type LoadState = "loading" | "ready" | "error";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function apiMessage(value: unknown, fallback: string): string {
-  if (!isRecord(value)) return fallback;
-  if (typeof value.error === "string") return value.error;
-  return isRecord(value.error) && typeof value.error.message === "string" ? value.error.message : fallback;
-}
 
 function parsePickups(value: unknown): readonly PickupSpot[] | null {
   if (!isRecord(value) || !Array.isArray(value.pickup_spots)) return null;
@@ -133,6 +125,19 @@ export default function JoinPage() {
       setPickupSpot(nextPickupId);
       if (saved.partySize) setPartySize(saved.partySize);
       if (saved.departureMode) setDepartureMode(saved.departureMode);
+
+      try {
+        const activeResponse = await participantFetch("/api/queue", { cache: "no-store" });
+        const activePayload: unknown = await activeResponse.json();
+        const activeRoute = activeResponse.ok ? participantRoute(activePayload) : null;
+        if (activeRoute?.startsWith("/waiting/") || activeRoute?.startsWith("/team/")) {
+          router.replace(activeRoute);
+          return;
+        }
+      } catch {
+        // Catalog selection remains usable when active-session recovery is unavailable.
+      }
+
       await loadRooms(nextPickupId, saved.dropZone);
       setLoadState("ready");
       trackProductEvent({ eventName: "join_started" });
@@ -140,7 +145,7 @@ export default function JoinPage() {
       setLoadState("error");
       showToast(error instanceof Error ? error.message : "목록을 불러오지 못했어요.", "error");
     }
-  }, [loadRooms, showToast]);
+  }, [loadRooms, router, showToast]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void loadExperience(), 0);
@@ -185,7 +190,9 @@ export default function JoinPage() {
       });
       const payload: unknown = await response.json();
       if (!response.ok || !isRecord(payload) || typeof payload.id !== "string") throw new Error(apiMessage(payload, "대기를 시작하지 못했어요. 선택 내용은 유지했어요."));
-      router.push(`/waiting/${payload.id}`);
+      const nextRoute = participantRoute(payload) ?? `/waiting/${payload.id}`;
+      if (payload.resumed === true) showToast("진행 중인 매칭으로 돌아갑니다.", "info");
+      router.push(nextRoute);
     } catch (error) {
       showToast(error instanceof Error ? error.message : "네트워크 연결을 확인해주세요.", "error");
       setJoining(false);
@@ -202,7 +209,7 @@ export default function JoinPage() {
         <header className={styles.hero}>
           <span className={styles.eyebrow}>부산대 택시 동승</span>
           <h1>같은 방향이면, 같이 올라가요.</h1>
-          <p>하차 지점을 고르면 최대 4명까지 자동으로 팀을 찾아드려요. 로그인 없이 약 1분이면 충분합니다.</p>
+          <p>하차 지점을 고르면 최대 4명까지 자동으로 팀을 찾아드려요. 신청은 약 1분, 매칭 대기는 최대 3분입니다.</p>
         </header>
 
         {loadState === "loading" ? <div className={styles.loadingPanel}><LoadingSpinner message="이용 가능한 경로를 확인하고 있어요." /></div> : null}
@@ -237,7 +244,7 @@ export default function JoinPage() {
               <section className={styles.section} aria-labelledby="preference-title">
                 <div className={styles.sectionHeader}><div><h2 id="preference-title">무엇을 우선할까요?</h2><p>4명이 모이면 선택과 관계없이 바로 제안해요.</p></div></div>
                 <fieldset><legend className="sr-only">매칭 우선순위</legend><div className={styles.optionGrid}>
-                  <label className={styles.optionLabel}><input type="radio" name="departure-mode" value="fast" checked={departureMode === "fast"} onChange={() => setDepartureMode("fast")} /><span className={styles.optionCopy}><strong>빠른 출발</strong><span>서로 다른 일행 2팀, 총 2~3명부터 바로 제안</span></span></label>
+                  <label className={styles.optionLabel}><input type="radio" name="departure-mode" value="fast" checked={departureMode === "fast"} onChange={() => setDepartureMode("fast")} /><span className={styles.optionCopy}><strong>빠른 출발</strong><span>모든 일행이 빠른 출발을 고른 2~3명 팀부터 바로 제안</span></span></label>
                   <label className={styles.optionLabel}><input type="radio" name="departure-mode" value="cheap" checked={departureMode === "cheap"} onChange={() => setDepartureMode("cheap")} /><span className={styles.optionCopy}><strong>요금 절약</strong><span>최대 3분 동안 4명을 우선 모집</span></span></label>
                 </div></fieldset>
               </section>
@@ -253,13 +260,14 @@ export default function JoinPage() {
                   <div className={styles.summaryRow}><span>예상 이동</span><strong>{selectedRoom ? `택시 ${selectedRoom.fare.ride_minutes}분 + 도보 ${selectedRoom.walk_minutes}분` : "-"}</strong></div>
                 </div>
                 {selectedRoom ? <p className={styles.helper}>4명 탑승 시 1인 약 {perPersonFare(selectedRoom.fare.fare_min, 4)}~{perPersonFare(selectedRoom.fare.fare_max, 4)}</p> : <p className={styles.helper}>요금은 교통 상황에 따라 달라질 수 있어요.</p>}
-                <button className={`button button--primary ${styles.primaryWide}`} type="button" disabled={!selectedRoom || joining} onClick={() => void joinQueue()}>{joining ? "대기열에 등록 중…" : selectedRoom ? `${selectedRoom.zone_name} 매칭 시작` : "하차 지점을 선택해주세요"}</button>
+                <button className={`button button--primary ${styles.primaryWide} ${styles.desktopJoinAction}`} type="button" disabled={!selectedRoom || joining} onClick={() => void joinQueue()}>{joining ? "대기열에 등록 중…" : selectedRoom ? `${selectedRoom.zone_name} 매칭 시작` : "하차 지점을 선택해주세요"}</button>
               </div>
               <p className={styles.helper}>대기 등록 후 20초 매칭 제안을 모두 수락해야 팀이 확정돼요. 연락처와 실명은 수집하지 않습니다.</p>
             </aside>
           </div>
         ) : null}
       </div>
+      {loadState === "ready" ? <div className={styles.mobileJoinAction}><span>{selectedRoom?.zone_name ?? "하차 지점을 선택해주세요"}</span><button className="button button--primary" type="button" disabled={!selectedRoom || joining} onClick={() => void joinQueue()}>{joining ? "등록 중…" : "매칭 시작"}</button></div> : null}
     </main>
   );
 }

@@ -30,15 +30,24 @@ export default function MatchAcceptOverlay({ teamNumber, totalPartySize, pickupN
   const descriptionId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const participateButtonRef = useRef<HTMLButtonElement>(null);
+  const declineCancelButtonRef = useRef<HTMLButtonElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
   const expiredRef = useRef(false);
   const onExpireRef = useRef(onExpire);
+  const [confirmingDecline, setConfirmingDecline] = useState(false);
+  const declineConfirmationVisible = confirmingDecline && !accepted;
   const [secondsLeft, setSecondsLeft] = useState(() => Math.max(0, Math.ceil((Date.parse(offerExpiresAt) - Date.parse(serverNow)) / 1000)));
   const announcement = secondsLeft === 20 || secondsLeft === 10 || secondsLeft === 5 ? `매칭 제안 응답 시간이 ${secondsLeft}초 남았습니다.` : "";
 
   useEffect(() => {
     onExpireRef.current = onExpire;
   }, [onExpire]);
+
+  useEffect(() => {
+    if (!declineConfirmationVisible) return;
+    const focusFrame = window.requestAnimationFrame(() => declineCancelButtonRef.current?.focus());
+    return () => window.cancelAnimationFrame(focusFrame);
+  }, [declineConfirmationVisible]);
 
   useEffect(() => {
     expiredRef.current = false;
@@ -71,6 +80,11 @@ export default function MatchAcceptOverlay({ teamNumber, totalPartySize, pickupN
       }
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
+      if (panelRef.current && document.activeElement instanceof Node && !panelRef.current.contains(document.activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first)?.focus();
+        return;
+      }
       if (event.shiftKey && document.activeElement === first) {
         event.preventDefault();
         last?.focus();
@@ -102,10 +116,11 @@ export default function MatchAcceptOverlay({ teamNumber, totalPartySize, pickupN
         </div>
         <div className={styles.offerProgress} aria-hidden="true"><div className={styles.offerProgressBar} style={{ transform: `scaleX(${Math.min(1, secondsLeft / OFFER_SECONDS)})` }} /></div>
         <p className={styles.meta}>{accepted ? "참여 응답을 보냈어요. 다른 팀원의 응답을 기다리는 중입니다." : `응답 마감까지 ${secondsLeft}초`}</p>
+        {declineConfirmationVisible ? <p className={styles.declineWarning} role="alert">거절하면 본인은 대기에서 빠지고 다른 일행은 다시 대기로 돌아갑니다.</p> : null}
         <p className="sr-only" role="status" aria-live="polite">{announcement}</p>
         <div className="dialog__actions">
-          <button className="button button--quiet-danger" type="button" disabled={busy || secondsLeft === 0} onClick={onDecline}>이번 팀 제안 거절</button>
-          <button ref={participateButtonRef} className="button button--primary" type="button" disabled={busy || accepted || secondsLeft === 0} onClick={onAccept}>{busy ? "응답 전송 중…" : accepted ? "참여 응답 완료" : "팀 참여"}</button>
+          {declineConfirmationVisible ? <button ref={declineCancelButtonRef} className="button button--secondary" type="button" disabled={busy} onClick={() => setConfirmingDecline(false)}>거절 취소</button> : <button className="button button--quiet-danger" type="button" disabled={busy || accepted || secondsLeft === 0} onClick={() => setConfirmingDecline(true)}>이번 팀 제안 거절</button>}
+          {declineConfirmationVisible ? <button className="button button--danger" type="button" disabled={busy || accepted || secondsLeft === 0} onClick={onDecline}>{busy ? "응답 전송 중…" : "제안 거절 확정"}</button> : <button ref={participateButtonRef} className="button button--primary" type="button" disabled={busy || accepted || secondsLeft === 0} onClick={onAccept}>{busy ? "응답 전송 중…" : accepted ? "참여 응답 완료" : "팀 참여"}</button>}
         </div>
       </div>
     </div>

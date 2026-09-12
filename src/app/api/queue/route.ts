@@ -1,4 +1,5 @@
 import { MatchingEngineError, triggerAllMatches } from "@/lib/matching";
+import { triggerMatchesBestEffort } from "@/lib/matching-trigger-policy";
 import { generateNickname } from "@/lib/nickname";
 import { createAdminClient } from "@/lib/supabase/server";
 import { sanitizeErrorMessage } from "@/lib/validation";
@@ -125,13 +126,10 @@ export async function POST(request: Request) {
       return respond({ error: sanitizeErrorMessage(error) }, 500);
     }
 
-    let matchingPending = false;
-    try {
-      await triggerAllMatches();
-    } catch (error) {
-      if (!(error instanceof MatchingEngineError)) throw error;
-      matchingPending = true;
-    }
+    const matchingPending = await triggerMatchesBestEffort(
+      () => triggerAllMatches(),
+      (matchingError) => matchingError instanceof MatchingEngineError,
+    );
 
     const { data: currentEntry, error: currentEntryError } = await supabase
       .from("queue_entries")
@@ -162,7 +160,7 @@ export async function GET() {
 
   try {
     const supabase = await createAdminClient();
-    let { data, error } = await supabase
+    const { data, error } = await supabase
       .from("queue_entries")
       .select(QUEUE_SELECT)
       .eq("session_id", sessionId)
@@ -170,33 +168,6 @@ export async function GET() {
       .limit(1)
       .maybeSingle();
     if (error) return jsonNoStore({ error: sanitizeErrorMessage(error) }, 500);
-
-    const now = Date.now();
-    let needsAdvance = data?.status === "waiting" && Date.parse(data.queue_deadline_at) <= now;
-    if (!needsAdvance && data?.match_id && ["offered", "matched", "arrived"].includes(data.status)) {
-      const { data: relatedMatch, error: relatedMatchError } = await supabase
-        .from("matches")
-        .select("status,offer_expires_at,assembly_deadline")
-        .eq("id", data.match_id)
-        .maybeSingle();
-      if (relatedMatchError) return jsonNoStore({ error: sanitizeErrorMessage(relatedMatchError) }, 500);
-      const deadline = relatedMatch?.status === "offered" ? relatedMatch.offer_expires_at : relatedMatch?.assembly_deadline;
-      needsAdvance = Boolean(deadline && Date.parse(deadline) <= now);
-    }
-
-    if (needsAdvance) {
-      await triggerAllMatches();
-      const refreshed = await supabase
-        .from("queue_entries")
-        .select(QUEUE_SELECT)
-        .eq("session_id", sessionId)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      data = refreshed.data;
-      error = refreshed.error;
-      if (error) return jsonNoStore({ error: sanitizeErrorMessage(error) }, 500);
-    }
 
     return jsonNoStore(data ? { ...data, server_now: new Date().toISOString() } : null);
   } catch (error) {
