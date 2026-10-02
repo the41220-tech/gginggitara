@@ -1,93 +1,122 @@
-# 낑기타자
+# Gginggitara (낑기타자)
 
-부산대역의 정해진 승차 지점에서 관리형 하차 지점까지 가는 익명 택시 동승 서비스입니다. 사용자는 하차 지점, 일행 인원, 출발 우선순위를 고르고 대기·제안·집합·출발·정산까지 한 흐름으로 진행합니다. 운영자는 하차 지점과 요금표, 대기열, 매칭 현황과 지표를 관리합니다.
+An anonymous taxi-sharing web app for a bounded route network around Pusan National University Station. Riders choose a destination, party size, and departure preference, then move through waiting, offer acceptance, assembly, departure, and fare settlement. Operators manage the route catalog, fare ranges, queue, and matching state.
 
-현재 앱 버전은 `0.1.1`입니다. 출처는 GitHub 저장소이며, 배포 전에 `VERSION`·`CHANGELOG.md`·git 태그를 확인합니다.
+**Status:** application version `0.1.1`; local verification and pilot-preparation evidence are available. This repository is not proof of a completed public rider trial or production readiness. The listed deployment is [gginggitara-production.vercel.app](https://gginggitara-production.vercel.app); the documentation update does not attest that it runs the current source revision.
 
-## 기술 구성
+## The problem and the bounded approach
 
-- Next.js `16.3.4`, React `19.2.4`, TypeScript
-- Supabase Auth 및 Postgres. 서버 전용 서비스 역할 클라이언트가 카탈로그·매칭 전환을 수행합니다.
-- Next App Router의 Route Handler는 `src/app/api/**/route.ts`에 있습니다.
+Riders taking the same station-to-campus route can share a taxi, but they must agree on who is riding, when to depart, and how to settle the fare. This project makes those coordination steps explicit instead of treating matching as a one-time pairing result. This is the product problem being addressed, not a claim that interviews or rider outcomes have validated demand.
 
-## 로컬 실행
+The first pilot contract enables **Spot A only**. Destinations are managed rather than free text: an active pickup, active destination, and complete fare table must exist before a route appears. That limits coverage but gives every proposal a known route and fare snapshot. See the [product specification](docs/superpowers/specs/2026-09-08-gginggitara-production-redesign-design.md) and [operating contract](docs/OPERATIONS.md).
 
-Next.js가 요구하는 Node.js `20.9.0` 이상을 사용합니다. 이 작업물은 Node.js `22.20.0`에서 검증했습니다.
+## Decisions that shape the implementation
+
+| Decision | What it solves | What it costs or leaves open |
+| --- | --- | --- |
+| One route pool for `fast` and `cheap` | Allows compatible parties to meet without separating them into competing queues | Partial groups must respect the waiting policy |
+| Keep each party intact; combine at least two entries and 2–4 people | Preserves companions and taxi capacity | Some party-size combinations cannot depart together |
+| Select and transition matches in PostgreSQL under an advisory lock | Gives matching a single state authority under concurrent requests | Correctness depends on the SQL contract, not just UI behavior |
+| Signed anonymous participant cookie | Avoids account creation while binding actions to a participant | Clearing the cookie loses that browser's participant identity |
+| Managed fare range, then actual settlement | Separates a route estimate from the fare actually paid | An estimate is not a guaranteed final price |
+
+### A worked matching example
+
+The following is an **illustrative policy example**, not a recorded rider trial. All entries have the same pickup and destination; letters identify synthetic parties, not people.
+
+| Waiting entries | Policy outcome |
+| --- | --- |
+| A: 1 person, `fast`; B: 1 person, `fast` | Eligible for an immediate two-person offer |
+| A: 1 person, `cheap`; B: 1 person, `fast` | Wait until the oldest relevant three-minute deadline before a partial offer |
+| A: 2 people; B: 2 people | Eligible for an immediate four-person offer, regardless of departure preference |
+| A: 3 people; B: 2 people | Do not split either party or exceed four seats |
+
+When several combinations are eligible, the engine prioritizes the oldest matchable entry, then the fullest team. Offers expire after **20 seconds**; an unanswered entry is paused and can be resumed or cancelled. The three-minute and 20-second thresholds are implemented policy values, **not demonstrated optimal waiting times**.
+
+## Changes and lessons visible in the source
+
+- **Search completeness versus cost.** The matching hardening replaces a first-20-row cutoff with bounded representatives of equivalent party-size/preference/deadline signatures. This keeps a compatible entry beyond the old boundary discoverable without enumerating the entire queue. The [migration](supabase/migrations/20260912000000_matching_candidate_fairness.sql) and [regression tests](src/lib/matching-policy.test.ts) expose that tradeoff.
+- **Recover from stale membership.** A second browser tab can invalidate the first tab's match view. The [team-recovery tests](src/lib/team-recovery.test.ts) cover recovery through a read-only queue lookup rather than retaining an inaccessible team.
+- **Do not invent precision.** Unverified hardcoded bus times and queue estimates were removed from the API and UI. Registered route fare ranges remain estimates; actual payment is recorded separately.
+- **Local UI findings led to specific fixes.** The September QA report records increasing a 32px brand-link touch area to at least 48px and correcting Korean word wrapping, followed by new captures. These are documented local corrections, not proof of field adoption.
+
+## Verification and its limits
+
+Fresh-clone checks performed on **2026-10-02**, without a live database or production writes:
+
+| Check | Result | Scope |
+| --- | --- | --- |
+| `npm run test` | 52 passed; 0 failed, 0 skipped | Unit and source-contract regressions, including matching policy, authorization helpers, recovery, and analytics redaction |
+| `npm run lint` | Passed after installing dev dependencies | Static linting |
+| `npx next typegen && npx tsc --noEmit` | Passed | Generated route types and TypeScript checking |
+| `npm run build` | Passed | Production compilation; not runtime DB or deployment acceptance |
+
+Run route type generation before standalone `tsc` on a fresh clone: generated `RouteContext` declarations are otherwise absent. The test script currently obtains `tsx` through `npx` if it is not installed, so first execution can require registry access.
+
+The [September 8 local pilot-preparation QA report](docs/QA_SPOT_A_PILOT_2026-09-08.md) records an API/mobile-browser flow through settlement, 35 fixture scenarios, and 40 fixture captures with no reported failures. It also lists remaining staging, backup, and operational gates. Its ignored capture directory is not bundled here, and those browser/database checks were **not rerun** for this documentation update. It is not evidence of a customer pilot, reduced waiting times, or financial savings.
+
+**Known release limitation:** the dependency audit on 2026-10-02 reported a critical advisory for the locked Next.js version ([GHSA-vcvr-r3jv-pc5j](https://github.com/advisories/GHSA-vcvr-r3jv-pc5j)). This README-only revision does not update dependencies. Passing tests and a public repository do not establish that this issue is fixed. Resolve the affected dependency and rerun the release gates before claiming production readiness. The instance-local rate limiter also does not provide a global serverless abuse limit.
+
+## The next validation question
+
+**Proposed, not completed:** do the current partial-team waiting and offer-expiry rules support a usable station flow without splitting parties or starving older eligible entries?
+
+The next staged evaluation should record acceptance/expiry rates and waiting-time distributions for explicit synthetic arrival scenarios, alongside the invariant checks for capacity, intact parties, membership authorization, and recovery. Only after staging approval should an authorized field pilot assess rider behavior. The repository does not yet establish sample size, outcome targets, or an optimal timing policy; those must be chosen before interpreting pilot results.
+
+## Reproduce locally
+
+Requires Node.js **20.9+**, npm, and the Supabase CLI/local container runtime. The app uses Next.js, React, TypeScript, Supabase Auth, and PostgreSQL.
 
 ```bash
-npm install
+git clone https://github.com/the41220-tech/gginggitara.git
+cd gginggitara
+npm ci --include=dev
 supabase start
+```
+
+Create an ignored local environment file using the variable names described in the [operations guide](docs/OPERATIONS.md). Use **only your own local Supabase values**. Configure participant signing, event salt, and the administrator allowlist; provision your own local administrator through Studio. No working credentials or pre-created administrator are supplied by this repository. Resetting local Auth data requires reprovisioning that account.
+
+```bash
 npm run dev -- --hostname 127.0.0.1
 ```
 
-브라우저에서 `http://127.0.0.1:3000/join`을 엽니다. 이 작업공간은 `supabase/config.toml`과 migration으로 로컬 카탈로그를 재현하며, 현재 컴퓨터에는 로컬 연결용 `.env.development.local`이 준비되어 있습니다. 검증된 운영자 로그인 정보는 Git에서 제외된 `.env.local-admin.qa`에서 확인합니다. 로컬 DB를 초기화하면 Auth 사용자도 사라지므로 운영자 계정을 다시 만들어야 합니다.
-
-- 고객 화면: `http://127.0.0.1:3000/join`
-- 운영자 로그인: `http://127.0.0.1:3000/admin`
-- 로컬 Supabase Studio: `http://127.0.0.1:54323`
-
-`.env.development.local`과 `.env.local-admin`은 로컬 전용이며 커밋하지 않습니다. 새 컴퓨터에서 설정하는 방법과 관리자 계정 재생성 절차는 [운영자 기능·로직 설명서](docs/운영자-기능-로직-설명서.md)를 따릅니다. `NEXT_PUBLIC_*` 값은 브라우저 번들에 들어가므로 빌드 환경마다 설정하고, 나머지 비밀값에는 절대 `NEXT_PUBLIC_` 접두사를 붙이지 않습니다.
+- Rider entry: `http://127.0.0.1:3000/join`
+- Administrator entry: `http://127.0.0.1:3000/admin`
+- Local Supabase Studio: `http://127.0.0.1:54323`
 
 ```bash
+npm run test
 npm run lint
+npx next typegen
 npx tsc --noEmit
 npm run build
 ```
 
-필수 환경 변수와 용도, 배포 전 값 설정은 [운영 가이드](docs/OPERATIONS.md)를 따릅니다.
+Do not put service-role, session-signing, cron, or salt values behind a `NEXT_PUBLIC_` prefix: those variables enter the browser bundle. The server-issued cookie is `HttpOnly`, `SameSite=Strict`, and seven days long; production also uses `Secure` and a `__Host-` name. Participant **session identity** is not accepted from URLs, request bodies, or browser storage; queue and match resource IDs still exist in application routes.
 
-## 사용자 흐름과 매칭 규칙
+Administrators must satisfy both Supabase Auth and the server-side email allowlist. Authentication alone does not grant administration rights.
 
-하차 지점은 자유 입력이 아닙니다. 활성 승차 지점과 활성 하차 지점, 해당 경로의 요금표가 모두 있을 때만 카탈로그에 노출됩니다. 관리자는 `/admin/dashboard`에서 하차 지점을 생성·편집·정렬하고 초안/활성/비활성 상태를 바꿉니다. 활성화에는 모든 활성 승차 지점의 요금표가 필요합니다.
-
-`fast`와 `cheap`은 같은 승차·하차 경로의 하나의 대기 풀을 공유합니다. 서버 DB 함수가 서로 다른 대기 엔트리 두 개 이상을 묶되, 일행을 쪼개지 않고 총 2~4명만 제안합니다.
-
-- 총 4명 조합은 우선순위와 관계없이 즉시 제안합니다.
-- 총 2~3명은 구성원 모두 `fast`일 때 즉시 제안합니다.
-- `cheap`이 포함된 2~3명 조합은 가장 오래된 대기 제한시간인 3분이 지난 뒤 제안합니다.
-- 제안 응답 시간은 20초입니다. 응답을 놓친 엔트리는 자동으로 일시정지되며, 사용자가 같은 조건으로 재개하거나 취소할 수 있습니다.
-
-요금은 등록된 경로의 예상 범위이며, 출발 뒤 실제 택시비를 정산에 기록합니다. 검증되지 않은 하드코딩 버스 시간·대기열 추정치는 제거했으며 API와 화면에 제공하지 않습니다.
-
-## 세션과 권한
-
-카탈로그를 처음 읽을 때 서버가 서명한 참여자 쿠키를 발급합니다. 이 쿠키는 `HttpOnly`, `SameSite=Strict`, 7일 수명이며 프로덕션에서는 `Secure` 및 `__Host-` 이름을 사용합니다. 참여자 ID를 URL, 요청 본문, 브라우저 저장소 또는 API 응답으로 전달하지 않습니다.
-
-관리자는 Supabase Auth 세션과 `ADMIN_EMAILS` 허용 목록을 모두 만족해야 합니다. 인증된 사용자라고 해서 관리자가 되는 것은 아닙니다.
-
-## 안전한 스크립트
+## Safe operational checks
 
 ```bash
-# 기본값은 localhost에 대한 읽기 전용 부하 확인입니다.
+# Defaults to a read-only check against localhost.
 node scripts/load-test.mjs
 
-# 로컬에서만 큐 생성 여정을 명시적으로 실행합니다.
+# Explicitly creates a queue journey against the local target only.
 node scripts/load-test.mjs --run-journey
 ```
 
-스테이징 E2E의 정확한 환경 계약과 실행 명령은 [출시 체크리스트](docs/GO_LIVE_CHECKLIST.md)를 따릅니다. 운영 환경에는 변경형 테스트를 실행하지 마세요.
+For state-changing E2E, use the explicit local/staging target contract in the [release checklist](docs/GO_LIVE_CHECKLIST.md). Do not run mutation or cleanup tests against production. Publishing source does not run a release, rotate credentials, or apply database migrations.
 
-## 문서
+## Evidence and further reading
 
-- [고객 이용 안내서](docs/고객-이용안내서.md)
-- [운영자 기능·로직 설명서](docs/운영자-기능-로직-설명서.md)
-- [디자인 시스템](DESIGN.md)
-- [운영 가이드](docs/OPERATIONS.md)
-- [출시 체크리스트](docs/GO_LIVE_CHECKLIST.md)
-- [Spot A 파일럿 QA 보고서](docs/QA_SPOT_A_PILOT_2026-09-08.md)
-- [승인된 제품·구현 명세](docs/superpowers/specs/2026-09-08-gginggitara-production-redesign-design.md)
-- [변경 기록](CHANGELOG.md)
+- [Rider guide](docs/고객-이용안내서.md)
+- [Operator guide](docs/운영자-기능-로직-설명서.md)
+- [Design system](DESIGN.md)
+- [Operations and environment contract](docs/OPERATIONS.md)
+- [Release checklist](docs/GO_LIVE_CHECKLIST.md)
+- [Local Spot A QA report](docs/QA_SPOT_A_PILOT_2026-09-08.md)
+- [Product and implementation specification](docs/superpowers/specs/2026-09-08-gginggitara-production-redesign-design.md)
+- [Changelog](CHANGELOG.md)
 
-## 버전 관리
-
-- 앱 버전: `VERSION`과 `package.json` `version` (지금 `0.1.1`)
-- 변경 요약: `CHANGELOG.md`
-- 릴리스 태그: `v0.1.1`처럼 `v` + 버전
-
-새 수정을 남길 때:
-
-1. `VERSION`과 `package.json` 버전을 같이 올린다.
-2. `CHANGELOG.md` 맨 위에 항목을 추가한다.
-3. 커밋한 뒤 `git tag vX.Y.Z` 하고 GitHub에 push한다.
-
-Vercel 프로덕션 URL은 `https://gginggitara-production.vercel.app`입니다. GitHub와 연결하면 `main` push로 배포할 수 있습니다. 지금은 CLI로 올린 배포와 git 태그가 자동으로 묶여 있지 않습니다.
+Runtime releases use `VERSION`, `package.json`, and `vMAJOR.MINOR.PATCH` tags. This documentation-only update does not bump the runtime version or assert that a CLI deployment is tied to a Git tag. Product decisions above describe the repository's documented design; they do not assign an unsupported individual-versus-team/AI contribution history.
